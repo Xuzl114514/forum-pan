@@ -72,8 +72,8 @@ class TcpConnection {
         if (!$this->is_connected()) { $this->error = '未连接到总端'; return false; }
         $this->_send(['action' => 'query', 'sql' => $sql]);
         $resp = $this->_recv();
-        if ($resp === null) { $this->error = '响应解析失败'; return false; }
-        if ($resp['code'] === 0) { $this->error = $resp['error']; return false; }
+        if ($resp === null) { $this->error = '响应解析失败: ' . $this->error; return false; }
+        if ($resp['code'] === 0) { $this->error = 'SQL错误: ' . ($resp['error'] ?? '未知'); return false; }
         $data = $resp['data'];
         $this->insert_id = $data['insert_id'];
         $this->affected_rows = $data['affected_rows'];
@@ -157,10 +157,10 @@ class TcpResult {
 // ============================================================
 function tcp_connect($host = '127.0.0.1', $port = 9527) { return new TcpConnection($host, $port); }
 function tcp_query($conn, $sql) { return $conn->query($sql); }
-function tcp_fetch_assoc($result) { return $result->fetch_assoc(); }
-function tcp_fetch_row($result) { return $result->fetch_row(); }
-function tcp_fetch_array($result) { return $result->fetch_array(); }
-function tcp_num_rows($result) { return $result->num_rows; }
+function tcp_fetch_assoc($result) { return ($result && $result !== false) ? $result->fetch_assoc() : null; }
+function tcp_fetch_row($result) { return ($result && $result !== false) ? $result->fetch_row() : null; }
+function tcp_fetch_array($result) { return ($result && $result !== false) ? $result->fetch_array() : null; }
+function tcp_num_rows($result) { return ($result && $result !== false) ? $result->num_rows : 0; }
 function tcp_real_escape_string($conn, $value) { return $conn->real_escape_string($value); }
 function tcp_insert_id($conn) { return $conn->insert_id; }
 function tcp_error($conn) { return $conn->error; }

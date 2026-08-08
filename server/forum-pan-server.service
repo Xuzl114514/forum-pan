@@ -6,8 +6,8 @@ Wants=mysql.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/forum-pan/server
-ExecStart=/usr/bin/php db_server.php 0.0.0.0 9527 localhost root root forum_pan
+WorkingDirectory=/root/server
+ExecStart=/usr/bin/php db_server.php 0.0.0.0 9527 localhost f xzl114514 f
 Restart=always
 RestartSec=5
 StandardOutput=journal
