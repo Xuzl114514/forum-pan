@@ -1,0 +1,17 @@
+[Unit]
+Description=Forum Pan 总端 TCP 数据库服务
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/forum-pan/server
+ExecStart=/usr/bin/php db_server.php 0.0.0.0 9527 localhost root root forum_pan
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
