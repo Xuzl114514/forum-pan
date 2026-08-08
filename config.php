@@ -18,8 +18,12 @@ header("Content-Type:text/html;charset=utf-8");
 // 数据库配置 — TCP 总端模式
 // 客户端通过 TCP 与总端通信，不直连 MySQL
 // ============================================
-define('TCP_HOST', '127.0.0.1');  // 总端 IP（局域网部署时改为总端所在 IP）
-define('TCP_PORT', 9527);         // 总端端口
+// 【重要】修改为总端服务器的 IP 地址
+//   内网部署: 总端 IP（如 192.168.1.100）
+//   外网部署: 总端的公网 IP 或域名（如 123.45.67.89）
+//   本机测试: 127.0.0.1
+define('TCP_HOST', '127.0.0.1');  // ← 修改这里为总端 IP
+define('TCP_PORT', 9527);         // 总端端口（需与 server/启动总端.bat 中一致）
 
 require_once __DIR__ . '/tcp_db.php';
 $conn = tcp_connect(TCP_HOST, TCP_PORT);
