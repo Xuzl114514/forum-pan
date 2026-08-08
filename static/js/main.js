@@ -2,9 +2,21 @@ var App = {
     get sidName() { return window.APP_SESSION_NAME || 'PHPSESSID'; },
     get sidValue() { return window.APP_SESSION_ID || ''; },
     get sidQuery() { return window.APP_SID_QUERY || ''; },
+    /** 获取当前主题（从服务端注入的变量） */
+    get theme() { return window.APP_THEME || 'default'; },
+    /** 获取每页条数（从服务端注入的变量） */
+    get perPage() { return window.APP_PER_PAGE || 10; },
     withSid: function(url) {
         if (!this.sidQuery) return url;
         return url + (url.indexOf('?') > -1 ? '&' : '?') + this.sidQuery;
+    },
+    /** 设置主题（无Cookie兼容：通过API持久化 + 立即生效） */
+    setTheme: function(name) {
+        document.body.className = document.body.className.replace(/theme-\S+/g, '') + ' theme-' + name;
+        var formData = new FormData();
+        formData.append('theme', name);
+        fetch('config.php?api=theme', { method: 'POST', body: formData, credentials: 'include' })
+            .catch(function() { /* 静默失败，UI已更新 */ });
     },
     avatarHtml: function(avatarUrl, displayName) {
         if (avatarUrl) {

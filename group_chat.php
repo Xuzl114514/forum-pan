@@ -200,7 +200,7 @@ function renderMessages(messages) {
                 html += '<div class="msg-recall">消息已撤回</div>';
             } else {
                 if (msg.content) {
-                    html += '<div>' + msg.content.replace(/\n/g, '<br>') + '</div>';
+                    html += '<div>' + escapeHtml(msg.content).replace(/\n/g, '<br>') + '</div>';
                 }
                 if (msg.file_path) {
                     html += renderAttachment(msg);
@@ -288,7 +288,7 @@ function appendMessages(messages) {
             html += '<div class="msg-recall">消息已撤回</div>';
         } else {
             if (msg.content) {
-                html += '<div>' + msg.content.replace(/\n/g, '<br>') + '</div>';
+                html += '<div>' + escapeHtml(msg.content).replace(/\n/g, '<br>') + '</div>';
             }
             if (msg.file_path) {
                 html += renderAttachment(msg);

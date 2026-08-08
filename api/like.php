@@ -39,9 +39,9 @@ if ($id <= 0 || !in_array($type, ['post', 'comment'])) {
 
 // 检查目标是否存在
 if ($type === 'post') {
-    $target = mysqli_fetch_assoc(mysqli_query($conn, "SELECT id, like_num FROM posts WHERE id = $id"));
+    $target = tcp_fetch_assoc(tcp_query($conn, "SELECT id, like_num FROM posts WHERE id = $id"));
 } else {
-    $target = mysqli_fetch_assoc(mysqli_query($conn, "SELECT id, like_num FROM comments WHERE id = $id"));
+    $target = tcp_fetch_assoc(tcp_query($conn, "SELECT id, like_num FROM comments WHERE id = $id"));
 }
 
 if (!$target) {
@@ -52,21 +52,21 @@ if (!$target) {
 // ========== 切换点赞状态 ==========
 if ($act === 'toggle') {
     // 检查是否已点赞（使用统一的 likes 表）
-    $check = mysqli_fetch_assoc(mysqli_query($conn, 
+    $check = tcp_fetch_assoc(tcp_query($conn, 
         "SELECT id FROM likes WHERE user_id = $uid AND type = '$type' AND target_id = $id"
     ));
 
     if ($check) {
         // 取消点赞
-        mysqli_query($conn, "DELETE FROM likes WHERE id = {$check['id']}");
+        tcp_query($conn, "DELETE FROM likes WHERE id = {$check['id']}");
         // 更新点赞数，使用 GREATEST 防止负数
-        mysqli_query($conn, "UPDATE {$type}s SET like_num = GREATEST(0, like_num - 1) WHERE id = $id");
+        tcp_query($conn, "UPDATE {$type}s SET like_num = GREATEST(0, like_num - 1) WHERE id = $id");
         $newNum = max(0, $target['like_num'] - 1);
         echo json_encode(['code' => 1, 'msg' => '已取消点赞', 'action' => 'unlike', 'like_num' => $newNum]);
     } else {
         // 点赞
-        mysqli_query($conn, "INSERT INTO likes(user_id, type, target_id) VALUES($uid, '$type', $id)");
-        mysqli_query($conn, "UPDATE {$type}s SET like_num = like_num + 1 WHERE id = $id");
+        tcp_query($conn, "INSERT INTO likes(user_id, type, target_id) VALUES($uid, '$type', $id)");
+        tcp_query($conn, "UPDATE {$type}s SET like_num = like_num + 1 WHERE id = $id");
         $newNum = $target['like_num'] + 1;
         echo json_encode(['code' => 1, 'msg' => '点赞成功', 'action' => 'like', 'like_num' => $newNum]);
     }
@@ -75,7 +75,7 @@ if ($act === 'toggle') {
 
 // ========== 检查点赞状态 ==========
 if ($act === 'check') {
-    $check = mysqli_fetch_assoc(mysqli_query($conn,
+    $check = tcp_fetch_assoc(tcp_query($conn,
         "SELECT id FROM likes WHERE user_id = $uid AND type = '$type' AND target_id = $id"
     ));
     echo json_encode(['code' => 1, 'liked' => $check ? 1 : 0]);

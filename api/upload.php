@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file'])) {
     finfo_close($finfo);
 
     // 转义文件名防止 SQL 注入
-    $safeName = mysqli_real_escape_string($conn, $file['name']);
+    $safeName = tcp_real_escape_string($conn, $file['name']);
 
     // 判断是否为图片
     $isImage = strpos($fileType, 'image/') === 0;
@@ -74,16 +74,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file'])) {
         $dbPath = 'db://image/' . uniqid();
 
         // 转义二进制数据
-        $escapedData = mysqli_real_escape_string($conn, $fileData);
+        $escapedData = tcp_real_escape_string($conn, $fileData);
 
         $sql = "INSERT INTO attachments(user_id, file_name, file_path, file_type, file_size, file_data) 
                 VALUES($uid, '$safeName', '$dbPath', '$fileType', {$file['size']}, '$escapedData')";
 
-        if (mysqli_query($conn, $sql)) {
-            $attachmentId = mysqli_insert_id($conn);
+        if (tcp_query($conn, $sql)) {
+            $attachmentId = tcp_insert_id($conn);
             // 更新路径为使用ID引用
             $realPath = 'db://image/' . $attachmentId;
-            mysqli_query($conn, "UPDATE attachments SET file_path='$realPath' WHERE id=$attachmentId");
+            tcp_query($conn, "UPDATE attachments SET file_path='$realPath' WHERE id=$attachmentId");
 
             echo json_encode([
                 'code' => 1,
@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file'])) {
                 ]
             ]);
         } else {
-            echo json_encode(['code' => 0, 'msg' => '数据库保存失败：' . mysqli_error($conn)]);
+            echo json_encode(['code' => 0, 'msg' => '数据库保存失败：' . tcp_error($conn)]);
         }
     } else {
         // ========== 非图片：存储到文件系统 ==========
@@ -108,16 +108,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file'])) {
 
         // 生成唯一文件名，防止文件名冲突
         $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $safeExt = mysqli_real_escape_string($conn, $extension);
+        $safeExt = tcp_real_escape_string($conn, $extension);
         $fileName = uniqid() . '_' . time() . '.' . $extension;
         $filePath = $uploadDir . $fileName;
 
         if (move_uploaded_file($file['tmp_name'], $filePath)) {
             // 相对路径存入数据库
             $dbFilePath = 'uploads/attachments/' . date('Ym') . '/' . $fileName;
-            mysqli_query($conn, "INSERT INTO attachments(user_id, file_name, file_path, file_type, file_size) 
+            tcp_query($conn, "INSERT INTO attachments(user_id, file_name, file_path, file_type, file_size) 
                                 VALUES($uid, '$safeName', '$dbFilePath', '$fileType', {$file['size']})");
-            $attachmentId = mysqli_insert_id($conn);
+            $attachmentId = tcp_insert_id($conn);
 
             echo json_encode([
                 'code' => 1,
@@ -140,8 +140,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file'])) {
 // ========== 获取附件信息 ==========
 if (isset($_GET['id'])) {
     $id = intval($_GET['id']);
-    $res = mysqli_query($conn, "SELECT * FROM attachments WHERE id = $id");
-    $attachment = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, "SELECT * FROM attachments WHERE id = $id");
+    $attachment = tcp_fetch_assoc($res);
 
     if ($attachment) {
         echo json_encode(['code' => 1, 'attachment' => $attachment]);

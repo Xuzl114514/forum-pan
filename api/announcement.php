@@ -14,13 +14,13 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 // 获取公告列表（带已读状态）
 if ($action === 'list') {
     $announcements = [];
-    $res = mysqli_query($conn, "SELECT a.*, IF(ar.id IS NOT NULL, 1, 0) as is_read
+    $res = tcp_query($conn, "SELECT a.*, IF(ar.id IS NOT NULL, 1, 0) as is_read
         FROM announcements a
         LEFT JOIN announcement_reads ar ON a.id = ar.announcement_id AND ar.user_id = $uid
         WHERE a.status=1
         ORDER BY a.is_top DESC, a.id DESC
         LIMIT 10");
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $announcements[] = [
             'id' => intval($row['id']),
             'title' => $row['title'],
@@ -41,14 +41,14 @@ if ($action === 'mark_read') {
         echo json_encode(['error' => 'Invalid ID']);
         exit;
     }
-    mysqli_query($conn, "INSERT IGNORE INTO announcement_reads (announcement_id, user_id, read_at) VALUES ($id, $uid, NOW())");
+    tcp_query($conn, "INSERT IGNORE INTO announcement_reads (announcement_id, user_id, read_at) VALUES ($id, $uid, NOW())");
     echo json_encode(['success' => true, 'message' => 'Marked as read']);
     exit;
 }
 
 // 标记所有公告已读
 if ($action === 'mark_all_read') {
-    mysqli_query($conn, "INSERT IGNORE INTO announcement_reads (announcement_id, user_id, read_at)
+    tcp_query($conn, "INSERT IGNORE INTO announcement_reads (announcement_id, user_id, read_at)
         SELECT id, $uid, NOW() FROM announcements WHERE status=1");
     echo json_encode(['success' => true, 'message' => 'All marked as read']);
     exit;
@@ -56,10 +56,10 @@ if ($action === 'mark_all_read') {
 
 // 获取未读公告数
 if ($action === 'unread_count') {
-    $res = mysqli_query($conn, "SELECT COUNT(*) as cnt FROM announcements a
+    $res = tcp_query($conn, "SELECT COUNT(*) as cnt FROM announcements a
         LEFT JOIN announcement_reads ar ON a.id = ar.announcement_id AND ar.user_id = $uid
         WHERE a.status=1 AND ar.id IS NULL");
-    $row = mysqli_fetch_assoc($res);
+    $row = tcp_fetch_assoc($res);
     echo json_encode(['success' => true, 'count' => intval($row['cnt'])]);
     exit;
 }
@@ -81,10 +81,10 @@ if ($action === 'create') {
         exit;
     }
     
-    $title = mysqli_real_escape_string($conn, $title);
-    $content = mysqli_real_escape_string($conn, $content);
+    $title = tcp_real_escape_string($conn, $title);
+    $content = tcp_real_escape_string($conn, $content);
     
-    mysqli_query($conn, "INSERT INTO announcements (title, content, is_top, status, created_at) VALUES ('$title', '$content', $isTop, 1, NOW())");
+    tcp_query($conn, "INSERT INTO announcements (title, content, is_top, status, created_at) VALUES ('$title', '$content', $isTop, 1, NOW())");
     echo json_encode(['success' => true, 'message' => 'Announcement created']);
     exit;
 }
@@ -102,10 +102,10 @@ if ($action === 'update') {
         exit;
     }
     
-    $title = mysqli_real_escape_string($conn, $title);
-    $content = mysqli_real_escape_string($conn, $content);
+    $title = tcp_real_escape_string($conn, $title);
+    $content = tcp_real_escape_string($conn, $content);
     
-    mysqli_query($conn, "UPDATE announcements SET title='$title', content='$content', is_top=$isTop, status=$status WHERE id=$id");
+    tcp_query($conn, "UPDATE announcements SET title='$title', content='$content', is_top=$isTop, status=$status WHERE id=$id");
     echo json_encode(['success' => true, 'message' => 'Announcement updated']);
     exit;
 }
@@ -117,7 +117,7 @@ if ($action === 'delete') {
         echo json_encode(['error' => 'Invalid ID']);
         exit;
     }
-    mysqli_query($conn, "DELETE FROM announcements WHERE id=$id");
+    tcp_query($conn, "DELETE FROM announcements WHERE id=$id");
     echo json_encode(['success' => true, 'message' => 'Announcement deleted']);
     exit;
 }
@@ -125,11 +125,11 @@ if ($action === 'delete') {
 // 获取所有公告（管理用，带已读统计）
 if ($action === 'get_all') {
     $announcements = [];
-    $res = mysqli_query($conn, "SELECT a.*, 
+    $res = tcp_query($conn, "SELECT a.*, 
         (SELECT COUNT(*) FROM announcement_reads ar WHERE ar.announcement_id = a.id) as read_count,
         (SELECT COUNT(*) FROM users u WHERE u.status=1) as total_users
         FROM announcements a ORDER BY a.id DESC");
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $row['read_count'] = intval($row['read_count']);
         $row['total_users'] = intval($row['total_users']);
         $row['unread_count'] = $row['total_users'] - $row['read_count'];

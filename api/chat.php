@@ -10,8 +10,8 @@ function apiIsLogin() {
         exit;
     }
     $uid = intval($_SESSION['uid']);
-    $res = mysqli_query($conn, "SELECT username,nickname,role,status FROM users WHERE id=$uid LIMIT 1");
-    $row = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, "SELECT username,nickname,role,status FROM users WHERE id=$uid LIMIT 1");
+    $row = tcp_fetch_assoc($res);
     if (!$row || intval($row['status']) !== 1) {
         $_SESSION = [];
         session_destroy();
@@ -38,9 +38,9 @@ if($act == 'get_users'){
             WHERE u.id != $uid 
             ORDER BY unread_count DESC, u.id DESC";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $users = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $users[] = $row;
     }
     
@@ -54,7 +54,7 @@ if($act == 'get_history'){
     $other_uid = intval($_GET['other_uid']);
     
     // 标记消息为已读
-    mysqli_query($conn, "UPDATE private_messages SET is_read = 1 
+    tcp_query($conn, "UPDATE private_messages SET is_read = 1 
                         WHERE sender_id = $other_uid AND receiver_id = $uid AND is_read = 0");
     
     // 获取聊天记录
@@ -70,22 +70,22 @@ if($act == 'get_history'){
                OR (pm.sender_id = $other_uid AND pm.receiver_id = $uid)
             ORDER BY pm.id ASC";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $messages = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $messages[] = $row;
     }
     
     // 标记这些消息为已读
     foreach ($messages as $msg) {
         if ($msg['sender_id'] != $uid) {
-            mysqli_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'private')");
+            tcp_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'private')");
         }
     }
     
     // 获取对方用户信息
-    $other_user_res = mysqli_query($conn, "SELECT id, username, nickname, avatar FROM users WHERE id = $other_uid");
-    $other_user = mysqli_fetch_assoc($other_user_res);
+    $other_user_res = tcp_query($conn, "SELECT id, username, nickname, avatar FROM users WHERE id = $other_uid");
+    $other_user = tcp_fetch_assoc($other_user_res);
     
     echo json_encode(['code'=>1, 'messages'=>$messages, 'other_user'=>$other_user]);
     exit;
@@ -98,7 +98,7 @@ if($act == 'get_new_messages'){
     $last_id = intval($_GET['last_id'] ?? 0);
     
     // 标记为已读
-    mysqli_query($conn, "UPDATE private_messages SET is_read = 1 
+    tcp_query($conn, "UPDATE private_messages SET is_read = 1 
                         WHERE sender_id = $other_uid AND receiver_id = $uid AND is_read = 0");
     
     // 获取新消息
@@ -115,9 +115,9 @@ if($act == 'get_new_messages'){
             AND pm.id > $last_id
             ORDER BY pm.id ASC";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $messages = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $messages[] = $row;
     }
     
@@ -125,7 +125,7 @@ if($act == 'get_new_messages'){
     if (!empty($messages)) {
         foreach ($messages as $msg) {
             if ($msg['sender_id'] != $uid) {
-                mysqli_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'private')");
+                tcp_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'private')");
             }
         }
     }
@@ -135,22 +135,23 @@ if($act == 'get_new_messages'){
 }
 
 // 发送消息
-if($act == 'send'){
-    $uid = $_SESSION['uid'];
-    $receiver_id = intval($_POST['receiver_id']);
-    $content = trim($_POST['content']);
-    
-    if (empty($content)) {
-        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容']);
-        exit;
-    }
-    
-    mysqli_query($conn, "INSERT INTO private_messages(sender_id, receiver_id, content) 
-                        VALUES('$uid', '$receiver_id', '$content')");
-    $message_id = mysqli_insert_id($conn);
+	if($act == 'send'){
+	    $uid = $_SESSION['uid'];
+	    $receiver_id = intval($_POST['receiver_id']);
+	    $content = trim($_POST['content']);
+	    
+	    if (empty($content)) {
+	        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容']);
+	        exit;
+	    }
+	    
+	    $contentEscaped = tcp_real_escape_string($conn, $content);
+	    tcp_query($conn, "INSERT INTO private_messages(sender_id, receiver_id, content) 
+	                        VALUES('$uid', '$receiver_id', '$contentEscaped')");
+    $message_id = tcp_insert_id($conn);
     
     // 发送后自动标记发送人已读
-    mysqli_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, $message_id, 'private')");
+    tcp_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, $message_id, 'private')");
     
     // 获取插入的消息
     $sql = "SELECT pm.*, 
@@ -160,8 +161,8 @@ if($act == 'send'){
             LEFT JOIN users u1 ON pm.sender_id = u1.id
             LEFT JOIN users u2 ON pm.receiver_id = u2.id
             WHERE pm.id = $message_id";
-    $res = mysqli_query($conn, $sql);
-    $message = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, $sql);
+    $message = tcp_fetch_assoc($res);
     
     echo json_encode(['code'=>1, 'msg'=>'发送成功', 'message'=>$message]);
     exit;
@@ -171,8 +172,8 @@ if($act == 'send'){
 if($act == 'get_unread_count'){
     $uid = $_SESSION['uid'];
     
-    $res = mysqli_query($conn, "SELECT COUNT(*) AS cnt FROM private_messages WHERE receiver_id = $uid AND is_read = 0");
-    $row = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, "SELECT COUNT(*) AS cnt FROM private_messages WHERE receiver_id = $uid AND is_read = 0");
+    $row = tcp_fetch_assoc($res);
     $count = intval($row['cnt']);
     
     echo json_encode(['code'=>1, 'count'=>$count]);
@@ -186,7 +187,7 @@ if($act == 'recall'){
     $role = intval($_SESSION['role']);
     
     // 检查消息是否存在
-    $message = mysqli_fetch_assoc(mysqli_query($conn, "SELECT sender_id, is_recalled, create_time FROM private_messages WHERE id = $message_id"));
+    $message = tcp_fetch_assoc(tcp_query($conn, "SELECT sender_id, is_recalled, create_time FROM private_messages WHERE id = $message_id"));
     if (!$message) {
         echo json_encode(['code'=>0, 'msg'=>'消息不存在']);
         exit;
@@ -219,7 +220,7 @@ if($act == 'recall'){
     }
     
     // 执行撤回
-    mysqli_query($conn, "UPDATE private_messages SET is_recalled = 1, recall_time = NOW() WHERE id = $message_id");
+    tcp_query($conn, "UPDATE private_messages SET is_recalled = 1, recall_time = NOW() WHERE id = $message_id");
     
     echo json_encode(['code'=>1, 'msg'=>'消息已撤回']);
     exit;

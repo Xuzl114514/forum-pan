@@ -17,7 +17,7 @@ CREATE TABLE `users` (
   `username` varchar(20) NOT NULL COMMENT '用户名（登录名）',
   `nickname` varchar(20) DEFAULT '' COMMENT '昵称（显示名）',
   `avatar` varchar(500) DEFAULT '' COMMENT '头像URL',
-  `password` varchar(32) NOT NULL COMMENT '密码（MD5加密）',
+  `password` varchar(255) NOT NULL COMMENT '密码（bcrypt哈希）',
   `role` tinyint(1) DEFAULT 0 COMMENT '角色：1=管理员，0=普通用户',
   `status` tinyint(1) DEFAULT 1 COMMENT '状态：1=正常，0=禁用',
   `storage` bigint(20) DEFAULT 1073741824 COMMENT '存储配额（字节），默认1GB',

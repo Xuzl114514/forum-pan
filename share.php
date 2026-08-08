@@ -21,13 +21,13 @@ $code = trim($_GET['code'] ?? '');
 </head>
 <body>
 <?php
-$codeEsc = mysqli_real_escape_string($conn, $code);
-$res = mysqli_query($conn, "SELECT fs.*, f.file_name, f.file_size, f.file_type FROM file_shares fs JOIN files f ON fs.file_id=f.id WHERE fs.share_code='$codeEsc' LIMIT 1");
-if (!$res || mysqli_num_rows($res) == 0) {
+$codeEsc = tcp_real_escape_string($conn, $code);
+$res = tcp_query($conn, "SELECT fs.*, f.file_name, f.file_size, f.file_type FROM file_shares fs JOIN files f ON fs.file_id=f.id WHERE fs.share_code='$codeEsc' LIMIT 1");
+if (!$res || tcp_num_rows($res) == 0) {
     echo '<div class="share-box"><div class="share-icon">❌</div><div class="share-expired">分享不存在或已失效</div></div>';
     exit;
 }
-$share = mysqli_fetch_assoc($res);
+$share = tcp_fetch_assoc($res);
 if ($share['expire_time'] && strtotime($share['expire_time']) < time()) {
     echo '<div class="share-box"><div class="share-icon">⏰</div><div class="share-expired">此分享已过期</div></div>';
     exit;

@@ -10,8 +10,8 @@ function apiIsLogin() {
         exit;
     }
     $uid = intval($_SESSION['uid']);
-    $res = mysqli_query($conn, "SELECT username,nickname,role,status FROM users WHERE id=$uid LIMIT 1");
-    $row = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, "SELECT username,nickname,role,status FROM users WHERE id=$uid LIMIT 1");
+    $row = tcp_fetch_assoc($res);
     if (!$row || intval($row['status']) !== 1) {
         $_SESSION = [];
         session_destroy();
@@ -30,9 +30,9 @@ $uid = $_SESSION['uid'];
 if($act == 'get_selectable_users'){
     $sql = "SELECT id, username, nickname, avatar FROM users WHERE id != $uid AND status = 1 ORDER BY id DESC";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $users = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $users[] = $row;
     }
     
@@ -41,27 +41,28 @@ if($act == 'get_selectable_users'){
 }
 
 // 创建群聊
-if($act == 'create'){
-    $name = trim($_POST['name']);
-    $member_ids = $_POST['member_ids'] ?? [];
-    
-    if (empty($name)) {
-        echo json_encode(['code'=>0, 'msg'=>'请输入群聊名称']);
-        exit;
-    }
-    
-    // 创建群聊
-    mysqli_query($conn, "INSERT INTO group_chats(name, creator_id) VALUES('$name', '$uid')");
-    $group_id = mysqli_insert_id($conn);
+	if($act == 'create'){
+	    $name = trim($_POST['name']);
+	    $member_ids = $_POST['member_ids'] ?? [];
+	    
+	    if (empty($name)) {
+	        echo json_encode(['code'=>0, 'msg'=>'请输入群聊名称']);
+	        exit;
+	    }
+	    
+	    $nameEscaped = tcp_real_escape_string($conn, $name);
+	    // 创建群聊
+	    tcp_query($conn, "INSERT INTO group_chats(name, creator_id) VALUES('$nameEscaped', '$uid')");
+    $group_id = tcp_insert_id($conn);
     
     // 添加创建者为成员
-    mysqli_query($conn, "INSERT INTO group_members(group_id, user_id) VALUES('$group_id', '$uid')");
+    tcp_query($conn, "INSERT INTO group_members(group_id, user_id) VALUES('$group_id', '$uid')");
     
     // 添加其他成员
     foreach ($member_ids as $member_id) {
         $member_id = intval($member_id);
         if ($member_id != $uid) {
-            mysqli_query($conn, "INSERT INTO group_members(group_id, user_id) VALUES('$group_id', '$member_id')");
+            tcp_query($conn, "INSERT INTO group_members(group_id, user_id) VALUES('$group_id', '$member_id')");
         }
     }
     
@@ -81,9 +82,9 @@ if($act == 'get_groups'){
             WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = $uid)
             ORDER BY (SELECT MAX(id) FROM group_messages WHERE group_id = g.id) DESC";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $groups = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $groups[] = $row;
     }
     
@@ -100,9 +101,9 @@ if($act == 'get_members'){
             LEFT JOIN users u ON gm.user_id = u.id
             WHERE gm.group_id = $group_id";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $members = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $members[] = $row;
     }
     
@@ -125,22 +126,22 @@ if($act == 'get_history'){
             WHERE gm.group_id = $group_id
             ORDER BY gm.id ASC";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $messages = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $messages[] = $row;
     }
     
     // 标记这些消息为已读
     foreach ($messages as $msg) {
         if ($msg['sender_id'] != $uid) {
-            mysqli_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'group')");
+            tcp_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'group')");
         }
     }
     
     // 获取群聊信息
-    $group_res = mysqli_query($conn, "SELECT id, name FROM group_chats WHERE id = $group_id");
-    $group = mysqli_fetch_assoc($group_res);
+    $group_res = tcp_query($conn, "SELECT id, name FROM group_chats WHERE id = $group_id");
+    $group = tcp_fetch_assoc($group_res);
     
     echo json_encode(['code'=>1, 'messages'=>$messages, 'group'=>$group]);
     exit;
@@ -159,9 +160,9 @@ if($act == 'get_new_messages'){
             WHERE gm.group_id = $group_id AND gm.id > $last_id
             ORDER BY gm.id ASC";
     
-    $res = mysqli_query($conn, $sql);
+    $res = tcp_query($conn, $sql);
     $messages = [];
-    while ($row = mysqli_fetch_assoc($res)) {
+    while ($row = tcp_fetch_assoc($res)) {
         $messages[] = $row;
     }
     
@@ -169,7 +170,7 @@ if($act == 'get_new_messages'){
     if (!empty($messages)) {
         foreach ($messages as $msg) {
             if ($msg['sender_id'] != $uid) {
-                mysqli_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'group')");
+                tcp_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, " . intval($msg['id']) . ", 'group')");
             }
         }
     }
@@ -179,22 +180,23 @@ if($act == 'get_new_messages'){
 }
 
 // 发送群聊消息
-if($act == 'send'){
-    $group_id = intval($_POST['group_id']);
-    $content = trim($_POST['content']);
-    $attachment_id = intval($_POST['attachment_id'] ?? 0);
-    
-    if (empty($content) && $attachment_id == 0) {
-        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容或上传附件']);
-        exit;
-    }
-    
-    mysqli_query($conn, "INSERT INTO group_messages(group_id, sender_id, content, attachment_id) 
-                        VALUES('$group_id', '$uid', '$content', '$attachment_id')");
-    $message_id = mysqli_insert_id($conn);
+	if($act == 'send'){
+	    $group_id = intval($_POST['group_id']);
+	    $content = trim($_POST['content']);
+	    $attachment_id = intval($_POST['attachment_id'] ?? 0);
+	    
+	    if (empty($content) && $attachment_id == 0) {
+	        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容或上传附件']);
+	        exit;
+	    }
+	    
+	    $contentEscaped = tcp_real_escape_string($conn, $content);
+	    tcp_query($conn, "INSERT INTO group_messages(group_id, sender_id, content, attachment_id) 
+	                        VALUES('$group_id', '$uid', '$contentEscaped', '$attachment_id')");
+    $message_id = tcp_insert_id($conn);
     
     // 发送后自动标记发送人已读
-    mysqli_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, $message_id, 'group')");
+    tcp_query($conn, "INSERT IGNORE INTO message_read_status(user_id, message_id, message_type) VALUES($uid, $message_id, 'group')");
     
     // 获取插入的消息
     $sql = "SELECT gm.*, u.username AS sender_username, u.nickname AS sender_nickname, u.avatar AS sender_avatar,
@@ -203,8 +205,8 @@ if($act == 'send'){
             LEFT JOIN users u ON gm.sender_id = u.id
             LEFT JOIN attachments a ON gm.attachment_id = a.id
             WHERE gm.id = $message_id";
-    $res = mysqli_query($conn, $sql);
-    $message = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, $sql);
+    $message = tcp_fetch_assoc($res);
     
     echo json_encode(['code'=>1, 'msg'=>'发送成功', 'message'=>$message]);
     exit;
@@ -216,8 +218,8 @@ if($act == 'get_unread_count'){
             WHERE gm.group_id IN (SELECT group_id FROM group_members WHERE user_id = $uid)
             AND gm.sender_id != $uid";
     
-    $res = mysqli_query($conn, $sql);
-    $row = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, $sql);
+    $row = tcp_fetch_assoc($res);
     $count = intval($row['cnt']);
     
     echo json_encode(['code'=>1, 'count'=>$count]);
@@ -231,7 +233,7 @@ if($act == 'recall'){
     $role = intval($_SESSION['role']);
     
     // 检查消息是否存在
-    $message = mysqli_fetch_assoc(mysqli_query($conn, "SELECT sender_id, is_recalled, create_time FROM group_messages WHERE id = $message_id"));
+    $message = tcp_fetch_assoc(tcp_query($conn, "SELECT sender_id, is_recalled, create_time FROM group_messages WHERE id = $message_id"));
     if (!$message) {
         echo json_encode(['code'=>0, 'msg'=>'消息不存在']);
         exit;
@@ -265,7 +267,7 @@ if($act == 'recall'){
     }
     
     // 执行撤回
-    mysqli_query($conn, "UPDATE group_messages SET is_recalled = 1, recall_time = NOW() WHERE id = $message_id");
+    tcp_query($conn, "UPDATE group_messages SET is_recalled = 1, recall_time = NOW() WHERE id = $message_id");
     
     echo json_encode(['code'=>1, 'msg'=>'消息已撤回']);
     exit;
@@ -278,7 +280,7 @@ if($act == 'dismiss'){
     $role = intval($_SESSION['role']);
     
     // 获取群聊信息
-    $group = mysqli_fetch_assoc(mysqli_query($conn, "SELECT creator_id FROM group_chats WHERE id = $group_id"));
+    $group = tcp_fetch_assoc(tcp_query($conn, "SELECT creator_id FROM group_chats WHERE id = $group_id"));
     if (!$group) {
         echo json_encode(['code'=>0, 'msg'=>'群聊不存在']);
         exit;
@@ -291,13 +293,13 @@ if($act == 'dismiss'){
     }
     
     // 删除群聊成员
-    mysqli_query($conn, "DELETE FROM group_members WHERE group_id = $group_id");
+    tcp_query($conn, "DELETE FROM group_members WHERE group_id = $group_id");
     
     // 删除群聊消息
-    mysqli_query($conn, "DELETE FROM group_messages WHERE group_id = $group_id");
+    tcp_query($conn, "DELETE FROM group_messages WHERE group_id = $group_id");
     
     // 删除群聊
-    mysqli_query($conn, "DELETE FROM group_chats WHERE id = $group_id");
+    tcp_query($conn, "DELETE FROM group_chats WHERE id = $group_id");
     
     echo json_encode(['code'=>1, 'msg'=>'群聊已解散']);
     exit;

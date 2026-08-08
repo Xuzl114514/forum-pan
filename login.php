@@ -1,5 +1,5 @@
 <?php include 'config.php';
-$theme = $_COOKIE['forum_theme'] ?? 'default';
+$theme = getTheme(); // 使用统一函数，适配无Cookie设备
 ?>
 <!DOCTYPE html>
 <html>
@@ -58,16 +58,21 @@ $theme = $_COOKIE['forum_theme'] ?? 'default';
         </div>
     </div>
 <script>
+/** 设置主题（无Cookie兼容：通过Session API + 直接修改DOM） */
 function setTheme(name) {
-    document.cookie = 'forum_theme=' + name + ';path=/;max-age=' + (86400 * 365);
+    // 立即生效（DOM操作）
     document.body.className = 'theme-' + name;
     document.querySelectorAll('.theme-swatch').forEach(function(b) {
         b.style.borderColor = b.dataset.theme === name ? 'var(--accent-primary)' : 'transparent';
     });
+    // 通过API持久化（服务端写入Session + Cookie）
+    var formData = new FormData();
+    formData.append('theme', name);
+    fetch('?api=theme', { method: 'POST', body: formData, credentials: 'include' })
+        .catch(function() { /* 静默失败，DOM已更新 */ });
 }
 document.body.onload = function() {
-    var t = document.cookie.match(/forum_theme=([^;]+)/);
-    var cur = t ? t[1] : 'default';
+    var cur = '<?=getTheme()?>';
     document.querySelectorAll('.theme-swatch').forEach(function(b) {
         b.style.borderColor = b.dataset.theme === cur ? 'var(--accent-primary)' : 'transparent';
     });

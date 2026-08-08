@@ -1,6 +1,5 @@
 <?php include 'config.php'; isLogin(); isAdmin();
-$theme = $_COOKIE['forum_theme'] ?? 'default';
-if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = 'default';
+$theme = getTheme(); // 使用统一函数，适配无Cookie设备
 ?>
 <!DOCTYPE html>
 <html>
@@ -69,13 +68,13 @@ if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = '
             <hr style="border:none;border-top:1px solid var(--border-subtle);margin:24px 0">
 
             <h4 style="margin-bottom:16px;font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--text-primary);">👥 用户管理</h4>
-            <?php $ures = mysqli_query($conn,"SELECT * FROM users WHERE id!=1 ORDER BY id DESC");
-            if(mysqli_num_rows($ures) == 0){
+            <?php $ures = tcp_query($conn,"SELECT * FROM users WHERE id!=1 ORDER BY id DESC");
+            if(tcp_num_rows($ures) == 0){
             ?>
             <div class="empty-state" style="padding:20px">
                 <div class="empty-text">暂无普通用户</div>
             </div>
-            <?php } while($u=mysqli_fetch_array($ures)){
+            <?php } while($u=tcp_fetch_array($ures)){
                 $uName = !empty($u['nickname']) ? $u['nickname'] : $u['username'];
                 $uAvatar = !empty($u['avatar']);
                 $uChar = mb_substr($uName, 0, 1, 'utf-8');

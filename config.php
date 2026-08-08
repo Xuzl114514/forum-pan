@@ -15,16 +15,19 @@ session_start();
 header("Content-Type:text/html;charset=utf-8");
 
 // ============================================
-// 数据库配置 - 请根据实际情况修改
+// 数据库配置 — TCP 总端模式
+// 客户端通过 TCP 与总端通信，不直连 MySQL
 // ============================================
-$host = 'localhost';      // 数据库主机
-$user = 'root';           // 数据库用户名
-$pwd = 'password';        // 数据库密码
-$dbname = 'forum_pan';    // 数据库名
+define('TCP_HOST', '127.0.0.1');  // 总端 IP（局域网部署时改为总端所在 IP）
+define('TCP_PORT', 9527);         // 总端端口
 
-$conn = new mysqli($host, $user, $pwd, $dbname);
-if ($conn->connect_error) die('数据库连接失败！');
-mysqli_set_charset($conn, 'utf8mb4');
+require_once __DIR__ . '/tcp_db.php';
+$conn = tcp_connect(TCP_HOST, TCP_PORT);
+if ($conn->connect_error) die('无法连接到总端数据库服务！请确认总端已启动: ' . $conn->connect_error);
+tcp_set_charset($conn, 'utf8mb4');
+
+// 运行时迁移：升级密码列以支持 bcrypt 哈希
+@tcp_query($conn, "ALTER TABLE `users` MODIFY `password` varchar(255) NOT NULL COMMENT '密码（bcrypt哈希）'");
 
 $upload_path = 'uploads/';
 $max_size = 1024 * 1024 * 1024;
@@ -58,8 +61,8 @@ function isLogin() {
         redirectTo('login.php');
     }
     $uid = intval($_SESSION['uid']);
-    $res = mysqli_query($conn, "SELECT username,nickname,role,status FROM users WHERE id=$uid LIMIT 1");
-    $row = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, "SELECT username,nickname,role,status FROM users WHERE id=$uid LIMIT 1");
+    $row = tcp_fetch_assoc($res);
     if (!$row || intval($row['status']) !== 1) {
         $_SESSION = [];
         session_destroy();
@@ -81,7 +84,7 @@ function getSetting($key) {
     static $tableChecked = false;
     if (!$tableChecked) {
         $tableChecked = true;
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `settings` (
+        @tcp_query($conn, "CREATE TABLE IF NOT EXISTS `settings` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
             `setting_key` varchar(50) NOT NULL,
             `setting_value` text,
@@ -90,10 +93,10 @@ function getSetting($key) {
             UNIQUE KEY `setting_key` (`setting_key`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
-    $key = mysqli_real_escape_string($conn, $key);
-    $res = @mysqli_query($conn, "SELECT setting_value FROM settings WHERE setting_key='$key' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) {
-        $row = mysqli_fetch_assoc($res);
+    $key = tcp_real_escape_string($conn, $key);
+    $res = @tcp_query($conn, "SELECT setting_value FROM settings WHERE setting_key='$key' LIMIT 1");
+    if ($res && tcp_num_rows($res) > 0) {
+        $row = tcp_fetch_assoc($res);
         return $row['setting_value'];
     }
     return null;
@@ -101,13 +104,13 @@ function getSetting($key) {
 
 function setSetting($key, $value) {
     global $conn;
-    $key = mysqli_real_escape_string($conn, $key);
-    $value = mysqli_real_escape_string($conn, $value);
+    $key = tcp_real_escape_string($conn, $key);
+    $value = tcp_real_escape_string($conn, $value);
     $existing = getSetting($key);
     if ($existing === null) {
-        @mysqli_query($conn, "INSERT INTO settings(setting_key, setting_value) VALUES('$key', '$value')");
+        @tcp_query($conn, "INSERT INTO settings(setting_key, setting_value) VALUES('$key', '$value')");
     } else {
-        @mysqli_query($conn, "UPDATE settings SET setting_value='$value' WHERE setting_key='$key'");
+        @tcp_query($conn, "UPDATE settings SET setting_value='$value' WHERE setting_key='$key'");
     }
 }
 
@@ -125,8 +128,8 @@ function getOpenRegistrationRemaining() {
 function getDisplayName($uid) {
     global $conn;
     $uid = intval($uid);
-    $res = mysqli_query($conn, "SELECT username, nickname FROM users WHERE id=$uid LIMIT 1");
-    $row = mysqli_fetch_assoc($res);
+    $res = tcp_query($conn, "SELECT username, nickname FROM users WHERE id=$uid LIMIT 1");
+    $row = tcp_fetch_assoc($res);
     if (!$row) return '未知用户';
     return !empty($row['nickname']) ? $row['nickname'] : $row['username'];
 }
@@ -135,11 +138,60 @@ function h($text) {
     return htmlspecialchars((string)$text, ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * 获取用户主题偏好（优先 Cookie，兜底 Session）
+ * 适配无 Cookie 能力的设备
+ */
+function getTheme() {
+    $theme = $_COOKIE['forum_theme'] ?? ($_SESSION['forum_theme'] ?? 'default');
+    if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = 'default';
+    return $theme;
+}
+
+/**
+ * 设置用户主题偏好（同时写入 Cookie 和 Session）
+ * Cookie 可能失败时 Session 作为兜底
+ */
+function setTheme($theme) {
+    if (in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) {
+        // 尝试设置 Cookie（无 Cookie 设备会静默失败）
+        @setcookie('forum_theme', $theme, time() + 86400 * 365, '/');
+        // Session 兜底存储
+        $_SESSION['forum_theme'] = $theme;
+    }
+}
+
+/**
+ * 获取用户每页条数偏好（优先 Cookie，兜底 Session）
+ * 适配无 Cookie 能力的设备
+ */
+function getPerPage() {
+    $perPage = isset($_COOKIE['forum_per_page']) ? intval($_COOKIE['forum_per_page']) : 0;
+    if ($perPage <= 0) {
+        $perPage = isset($_SESSION['forum_per_page']) ? intval($_SESSION['forum_per_page']) : 10;
+    }
+    if ($perPage < 5) $perPage = 5;
+    if ($perPage > 100) $perPage = 100;
+    return $perPage;
+}
+
+/**
+ * 设置用户每页条数偏好（同时写入 Cookie 和 Session）
+ * Cookie 可能失败时 Session 作为兜底
+ */
+function setPerPage($perPage) {
+    if ($perPage >= 5 && $perPage <= 100) {
+        // 尝试设置 Cookie（无 Cookie 设备会静默失败）
+        @setcookie('forum_per_page', $perPage, time() + 86400 * 30, '/');
+        // Session 兜底存储
+        $_SESSION['forum_per_page'] = $perPage;
+    }
+}
+
 function renderPageStart($title, $current = '') {
     $title = h($title);
     $cssVersion = time(); // 添加时间戳防止缓存
-    $theme = $_COOKIE['forum_theme'] ?? 'default';
-    if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = 'default';
+    $theme = getTheme(); // 使用统一函数，适配无Cookie设备
     echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no"><title>' . $title . '</title><link rel="stylesheet" href="static/css/style.css?v=' . $cssVersion . '"></head><body class="theme-' . h($theme) . '">';
     renderSidebar($current);
     echo '<div class="app-main"><div class="app-topbar"><button class="sidebar-toggle" type="button" onclick="toggleSidebar()">☰</button><div class="app-topbar-title">' . $title . '</div></div><div class="container">';
@@ -152,8 +204,8 @@ function renderSidebar($current = '') {
     $userAvatar = '';
     if (isset($_SESSION['uid'])) {
         $uid = intval($_SESSION['uid']);
-        $res = mysqli_query($conn, "SELECT avatar FROM users WHERE id=$uid LIMIT 1");
-        if ($res && ($row = mysqli_fetch_assoc($res))) {
+        $res = tcp_query($conn, "SELECT avatar FROM users WHERE id=$uid LIMIT 1");
+        if ($res && ($row = tcp_fetch_assoc($res))) {
             $userAvatar = $row['avatar'];
         }
     }
@@ -198,7 +250,7 @@ function renderPageEnd() {
     
     echo '</div>';
     
-    echo '<script>window.APP_SESSION_NAME=' . json_encode(session_name()) . ';window.APP_SESSION_ID=' . json_encode(session_id()) . ';window.APP_SID_QUERY=' . json_encode(currentSidPair()) . ';</script><script src="static/js/main.js"></script></body></html>';
+    echo '<script>window.APP_SESSION_NAME=' . json_encode(session_name()) . ';window.APP_SESSION_ID=' . json_encode(session_id()) . ';window.APP_SID_QUERY=' . json_encode(currentSidPair()) . ';window.APP_THEME=' . json_encode(getTheme()) . ';window.APP_PER_PAGE=' . json_encode(getPerPage()) . ';</script><script src="static/js/main.js"></script></body></html>';
 }
 
 // ---------- theme ----------
@@ -206,7 +258,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'theme') {
     header('Content-Type: application/json');
     $theme = $_POST['theme'] ?? $_GET['theme'] ?? '';
     if (in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) {
-        setcookie('forum_theme', $theme, time() + 86400 * 365, '/');
+        setTheme($theme); // 使用统一函数，同时写Cookie和Session
         echo json_encode(['code' => 1, 'theme' => $theme]);
     } else {
         echo json_encode(['code' => 0, 'msg' => '无效主题']);

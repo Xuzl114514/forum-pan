@@ -5,23 +5,24 @@ $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $perPage = isset($_GET['per_page']) ? intval($_GET['per_page']) : 0;
 
 if ($perPage <= 0) {
-    $perPage = isset($_COOKIE['forum_per_page']) ? intval($_COOKIE['forum_per_page']) : 10;
+    $perPage = getPerPage(); // 使用统一函数，适配无Cookie设备
 }
 if ($perPage < 5) $perPage = 5;
 if ($perPage > 100) $perPage = 100;
 
+// 持久化偏好（同时写Cookie和Session）
 if (!isset($_COOKIE['forum_per_page']) || intval($_COOKIE['forum_per_page']) != $perPage) {
-    setcookie('forum_per_page', $perPage, time() + 86400 * 30, '/');
+    setPerPage($perPage); // 使用统一函数，适配无Cookie设备
 }
 
-$totalRes = mysqli_query($conn, "SELECT COUNT(*) as cnt FROM posts");
-$totalRow = mysqli_fetch_assoc($totalRes);
+$totalRes = tcp_query($conn, "SELECT COUNT(*) as cnt FROM posts");
+$totalRow = tcp_fetch_assoc($totalRes);
 $total = intval($totalRow['cnt']);
 $totalPages = max(1, ceil($total / $perPage));
 if ($page > $totalPages) $page = $totalPages;
 
 $offset = ($page - 1) * $perPage;
-$res = mysqli_query($conn, "SELECT p.*, u.username, u.nickname, u.avatar FROM posts p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.is_top DESC, p.id DESC LIMIT $offset, $perPage");
+$res = tcp_query($conn, "SELECT p.*, u.username, u.nickname, u.avatar FROM posts p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.is_top DESC, p.id DESC LIMIT $offset, $perPage");
 
 renderPageStart('论坛首页', 'index');
 ?>
@@ -77,7 +78,7 @@ if ($total == 0) {
     <div class="empty-text">还没有帖子，去发第一篇吧。</div>
 </div>
 <?php } else {
-while ($row = mysqli_fetch_assoc($res)) {
+while ($row = tcp_fetch_assoc($res)) {
     $displayName = !empty($row['nickname']) ? $row['nickname'] : $row['username'];
     $avatarChar = mb_substr($displayName, 0, 1, 'utf-8');
     $hasAvatar = !empty($row['avatar']);
@@ -158,8 +159,9 @@ function requestJson(url, callback) {
     if (url.indexOf('?') === -1) {
         url += '?';
     }
+    // 无Cookie兼容：优先从Session获取ID（而非Cookie）
     if (url.indexOf('PHPSESSID') === -1) {
-        url += (url.indexOf('?') === url.length - 1 ? '' : '&') + 'PHPSESSID=' + '<?=$_COOKIE[session_name()] ?? session_id()?>';
+        url += (url.indexOf('?') === url.length - 1 ? '' : '&') + 'PHPSESSID=' + '<?=session_id()?>';
     }
     
     fetch(url, {

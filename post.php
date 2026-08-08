@@ -1,6 +1,5 @@
 <?php include 'config.php'; isLogin();
-$theme = $_COOKIE['forum_theme'] ?? 'default';
-if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = 'default';
+$theme = getTheme(); // 使用统一函数，适配无Cookie设备
 ?>
 <!DOCTYPE html>
 <html>
@@ -35,7 +34,7 @@ if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = '
         </div>
         <?php }else{ 
         $id = intval($_GET['id']);
-        $post = mysqli_fetch_array(mysqli_query($conn,"SELECT p.*, u.username, u.nickname, u.avatar FROM posts p LEFT JOIN users u ON p.user_id = u.id WHERE p.id=$id"));
+        $post = tcp_fetch_array(tcp_query($conn,"SELECT p.*, u.username, u.nickname, u.avatar FROM posts p LEFT JOIN users u ON p.user_id = u.id WHERE p.id=$id"));
         if(!$post){
             echo '<div class="card empty-state"><div class="empty-icon">❌</div><div class="empty-text">帖子不存在</div></div>';
             exit;
@@ -83,13 +82,13 @@ if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = '
             <div id="commentList">
             <?php 
             $lastCommentId = 0;
-            $cres = mysqli_query($conn,"SELECT c.*, u.username, u.nickname, u.avatar FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.post_id=$id ORDER BY c.id ASC");
-            if(mysqli_num_rows($cres) == 0){
+            $cres = tcp_query($conn,"SELECT c.*, u.username, u.nickname, u.avatar FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.post_id=$id ORDER BY c.id ASC");
+            if(tcp_num_rows($cres) == 0){
             ?>
             <div class="empty-state" style="padding:20px" id="emptyComment">
                 <div class="empty-text">暂无评论，快来抢沙发吧！</div>
             </div>
-            <?php } while($c = mysqli_fetch_array($cres)){ 
+            <?php } while($c = tcp_fetch_array($cres)){ 
                 $commentAuthor = !empty($c['nickname']) ? $c['nickname'] : $c['username'];
                 $commentAvatarChar = mb_substr($commentAuthor, 0, 1, 'utf-8');
                 $commentHasAvatar = !empty($c['avatar']);

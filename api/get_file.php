@@ -13,18 +13,18 @@ if ($id <= 0) {
     exit('Not Found');
 }
 
-$res = mysqli_query($conn, "SELECT * FROM files WHERE id=$id AND user_id=$uid LIMIT 1");
-if (!$res || mysqli_num_rows($res) == 0) {
+$res = tcp_query($conn, "SELECT * FROM files WHERE id=$id AND user_id=$uid LIMIT 1");
+if (!$res || tcp_num_rows($res) == 0) {
     if ($uid > 0 && isset($_SESSION['role']) && intval($_SESSION['role']) === 1) {
-        $res = mysqli_query($conn, "SELECT * FROM files WHERE id=$id LIMIT 1");
+        $res = tcp_query($conn, "SELECT * FROM files WHERE id=$id LIMIT 1");
     }
-    if (!$res || mysqli_num_rows($res) == 0) {
+    if (!$res || tcp_num_rows($res) == 0) {
         http_response_code(404);
         exit('File Not Found');
     }
 }
 
-$file = mysqli_fetch_assoc($res);
+$file = tcp_fetch_assoc($res);
 $filePath = dirname(dirname(__DIR__)) . '/' . $file['file_path'];
 
 if (!file_exists($filePath)) {

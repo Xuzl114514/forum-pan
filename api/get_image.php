@@ -16,8 +16,8 @@ if ($id <= 0) {
 }
 
 // 查询附件信息
-$res = mysqli_query($conn, "SELECT file_data, file_type FROM attachments WHERE id = $id AND file_data IS NOT NULL");
-$attachment = mysqli_fetch_assoc($res);
+$res = tcp_query($conn, "SELECT file_data, file_type FROM attachments WHERE id = $id AND file_data IS NOT NULL");
+$attachment = tcp_fetch_assoc($res);
 
 if (!$attachment || !$attachment['file_data']) {
     http_response_code(404);

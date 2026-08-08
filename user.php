@@ -2,13 +2,12 @@
 if (isset($_GET['set_theme'])) {
     $t = $_GET['set_theme'];
     if (in_array($t, ['default', 'pink', 'white', 'black', 'blue'])) {
-        setcookie('forum_theme', $t, time() + 86400 * 365, '/');
+        setTheme($t); // 使用统一函数，适配无Cookie设备
     }
     header('Location: user.php');
     exit;
 }
-$theme = $_COOKIE['forum_theme'] ?? 'default';
-if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = 'default';
+$theme = getTheme(); // 使用统一函数，适配无Cookie设备
 ?>
 <!DOCTYPE html>
 <html>
@@ -28,8 +27,8 @@ if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = '
     <div class="container">
         <?php 
         $uid = $_SESSION['uid'];
-        $res = mysqli_query($conn,"SELECT * FROM users WHERE id=$uid");
-        $user = mysqli_fetch_array($res);
+        $res = tcp_query($conn,"SELECT * FROM users WHERE id=$uid");
+        $user = tcp_fetch_array($res);
         $displayName = !empty($user['nickname']) ? $user['nickname'] : $user['username'];
         $avatarChar = mb_substr($displayName, 0, 1, 'utf-8');
         ?>
@@ -58,7 +57,7 @@ if (!in_array($theme, ['default', 'pink', 'white', 'black', 'blue'])) $theme = '
                         'black' => ['纯黑', '#000'],
                         'blue' => ['科技蓝', 'linear-gradient(135deg,#3b82f6,#60a5fa)'],
                     ];
-                    $curTheme = $_COOKIE['forum_theme'] ?? 'default';
+                    $curTheme = getTheme(); // 使用统一函数，适配无Cookie设备
                     foreach ($themes as $key => $info) {
                         $isActive = $key === $curTheme;
                         echo '<a href="user.php?set_theme=' . $key . '" class="theme-dot' . ($isActive ? ' active' : '') . '" title="' . $info[0] . '" style="display:inline-block;width:32px;height:32px;border-radius:50%;background:' . $info[1] . ';border:3px solid ' . ($isActive ? 'var(--accent-primary)' : 'transparent') . ';transition:border-color 0.2s"></a>';
