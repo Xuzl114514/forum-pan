@@ -124,7 +124,7 @@ CREATE TABLE `private_messages` (
   `sender_id` int(11) NOT NULL COMMENT '发送者ID',
   `receiver_id` int(11) NOT NULL COMMENT '接收者ID',
   `content` text NOT NULL COMMENT '消息内容',
-  `attachment_ids` varchar(255) DEFAULT '' COMMENT '附件ID列表',
+  `attachment_id` int(11) DEFAULT 0 COMMENT '附件ID',
   `is_read` tinyint(1) DEFAULT 0 COMMENT '是否已读：0=未读，1=已读',
   `is_recalled` tinyint(1) DEFAULT 0 COMMENT '是否撤回：0=否，1=是',
   `recall_time` datetime DEFAULT NULL COMMENT '撤回时间',
@@ -142,10 +142,10 @@ DROP TABLE IF EXISTS `group_chats`;
 CREATE TABLE `group_chats` (
   `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '群组ID',
   `name` varchar(50) NOT NULL COMMENT '群组名称',
-  `owner_id` int(11) NOT NULL COMMENT '群主ID',
+  `creator_id` int(11) NOT NULL COMMENT '群主ID',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  KEY `owner_id` (`owner_id`)
+  KEY `creator_id` (`creator_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='群聊表';
 
 -- ---------------------------------------------------
@@ -171,7 +171,7 @@ CREATE TABLE `group_messages` (
   `group_id` int(11) NOT NULL COMMENT '群组ID',
   `sender_id` int(11) NOT NULL COMMENT '发送者ID',
   `content` text NOT NULL COMMENT '消息内容',
-  `attachment_ids` varchar(255) DEFAULT '' COMMENT '附件ID列表',
+  `attachment_id` int(11) DEFAULT 0 COMMENT '附件ID',
   `is_recalled` tinyint(1) DEFAULT 0 COMMENT '是否撤回：0=否，1=是',
   `recall_time` datetime DEFAULT NULL COMMENT '撤回时间',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',

@@ -180,17 +180,27 @@ if($act == 'get_new_messages'){
 }
 
 // 发送群聊消息
-	if($act == 'send'){
-	    $group_id = intval($_POST['group_id']);
-	    $content = trim($_POST['content']);
-	    $attachment_id = intval($_POST['attachment_id'] ?? 0);
-	    
-	    if (empty($content) && $attachment_id == 0) {
-	        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容或上传附件']);
-	        exit;
-	    }
-	    
-	    $contentEscaped = tcp_real_escape_string($conn, $content);
+		if($act == 'send'){
+		    $group_id = intval($_POST['group_id']);
+		    $content = trim($_POST['content']);
+		    $attachment_id = intval($_POST['attachment_id'] ?? 0);
+		    
+		    if (empty($content) && $attachment_id == 0) {
+		        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容或上传附件']);
+		        exit;
+		    }
+		    
+		    // 敏感词过滤（仅过滤文字内容）
+		    if (!empty($content)) {
+		        $filterResult = filterSensitive($content, $conn);
+		        if ($filterResult['blocked']) {
+		            echo json_encode(['code' => 0, 'msg' => '消息包含敏感词「' . $filterResult['word'] . '」，无法发送']);
+		            exit;
+		        }
+		        $content = $filterResult['content'];
+		    }
+		    
+		    $contentEscaped = tcp_real_escape_string($conn, $content);
 	    tcp_query($conn, "INSERT INTO group_messages(group_id, sender_id, content, attachment_id) 
 	                        VALUES('$group_id', '$uid', '$contentEscaped', '$attachment_id')");
     $message_id = tcp_insert_id($conn);

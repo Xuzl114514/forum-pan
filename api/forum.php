@@ -30,34 +30,36 @@ function apiIsAdmin() {
     }
 }
 
-function filterSensitive($content, $conn) {
-    $res = tcp_query($conn, "SELECT word, level FROM sensitive_words");
-    while ($row = tcp_fetch_assoc($res)) {
-        if (strpos($content, $row['word']) !== false) {
-            if ($row['level'] == 2) {
-                return ['blocked' => true, 'word' => $row['word']];
-            }
-            $content = str_replace($row['word'], '***', $content);
-        }
-    }
-    return ['blocked' => false, 'content' => $content];
-}
-
 apiIsLogin();
 
 // 发帖
-	if($act == 'add'){
-	    $uid = $_SESSION['uid'];
-	    $title = tcp_real_escape_string($conn, trim($_POST['title']));
-	    $content = tcp_real_escape_string($conn, trim($_POST['content']));
-	    if ($title === '' || $content === '') {
-	        echo json_encode(['code'=>0, 'msg'=>'标题和内容不能为空']);
-	        exit;
-	    }
-	    tcp_query($conn,"INSERT INTO posts(user_id,title,content) VALUES('$uid','$title','$content')");
-    echo json_encode(['code'=>1, 'msg'=>'发布成功']);
-    exit;
-}
+		if($act == 'add'){
+		    $uid = $_SESSION['uid'];
+		    $title = trim($_POST['title']);
+		    $content = trim($_POST['content']);
+		    if ($title === '' || $content === '') {
+		        echo json_encode(['code'=>0, 'msg'=>'标题和内容不能为空']);
+		        exit;
+		    }
+		    // 敏感词过滤
+		    $filterResult = filterSensitive($title, $conn);
+		    if ($filterResult['blocked']) {
+		        echo json_encode(['code' => 0, 'msg' => '标题包含敏感词「' . $filterResult['word'] . '」，无法发布']);
+		        exit;
+		    }
+		    $title = $filterResult['content'];
+		    $filterResult = filterSensitive($content, $conn);
+		    if ($filterResult['blocked']) {
+		        echo json_encode(['code' => 0, 'msg' => '内容包含敏感词「' . $filterResult['word'] . '」，无法发布']);
+		        exit;
+		    }
+		    $content = $filterResult['content'];
+		    $title = tcp_real_escape_string($conn, $title);
+		    $content = tcp_real_escape_string($conn, $content);
+		    tcp_query($conn,"INSERT INTO posts(user_id,title,content) VALUES('$uid','$title','$content')");
+	    echo json_encode(['code'=>1, 'msg'=>'发布成功']);
+	    exit;
+	}
 
 // 回复
 	if($act == 'comment'){

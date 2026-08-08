@@ -135,17 +135,25 @@ if($act == 'get_new_messages'){
 }
 
 // 发送消息
-	if($act == 'send'){
-	    $uid = $_SESSION['uid'];
-	    $receiver_id = intval($_POST['receiver_id']);
-	    $content = trim($_POST['content']);
-	    
-	    if (empty($content)) {
-	        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容']);
-	        exit;
-	    }
-	    
-	    $contentEscaped = tcp_real_escape_string($conn, $content);
+		if($act == 'send'){
+		    $uid = $_SESSION['uid'];
+		    $receiver_id = intval($_POST['receiver_id']);
+		    $content = trim($_POST['content']);
+		    
+		    if (empty($content)) {
+		        echo json_encode(['code'=>0, 'msg'=>'请输入消息内容']);
+		        exit;
+		    }
+		    
+		    // 敏感词过滤
+		    $filterResult = filterSensitive($content, $conn);
+		    if ($filterResult['blocked']) {
+		        echo json_encode(['code' => 0, 'msg' => '消息包含敏感词「' . $filterResult['word'] . '」，无法发送']);
+		        exit;
+		    }
+		    $content = $filterResult['content'];
+		    
+		    $contentEscaped = tcp_real_escape_string($conn, $content);
 	    tcp_query($conn, "INSERT INTO private_messages(sender_id, receiver_id, content) 
 	                        VALUES('$uid', '$receiver_id', '$contentEscaped')");
     $message_id = tcp_insert_id($conn);

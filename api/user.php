@@ -281,12 +281,27 @@ if ($act == 'upload_avatar') {
 }
 
 // ---------- sensitive_words ----------
+/** 确保敏感词表存在（自动建表） */
+function ensureSensitiveWordsTable() {
+    global $conn;
+    @tcp_query($conn, "CREATE TABLE IF NOT EXISTS `sensitive_words` (
+        `id` int(11) NOT NULL AUTO_INCREMENT,
+        `word` varchar(100) NOT NULL COMMENT '敏感词',
+        `level` tinyint(1) DEFAULT 1 COMMENT '级别：1=替换，2=拦截',
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `word` (`word`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
 if ($act == 'get_sensitive_words') {
     apiIsLogin();
     apiIsAdmin();
+    ensureSensitiveWordsTable();
     $res = tcp_query($conn, "SELECT * FROM sensitive_words ORDER BY id DESC");
     $words = [];
-    while ($row = tcp_fetch_assoc($res)) { $words[] = $row; }
+    if ($res) {
+        while ($row = tcp_fetch_assoc($res)) { $words[] = $row; }
+    }
     echo json_encode(['code' => 1, 'words' => $words]);
     exit;
 }
@@ -294,6 +309,7 @@ if ($act == 'get_sensitive_words') {
 if ($act == 'add_sensitive_word') {
     apiIsLogin();
     apiIsAdmin();
+    ensureSensitiveWordsTable();
     $word = trim($_POST['word'] ?? '');
     $level = intval($_POST['level'] ?? 1);
     if ($word === '') { echo json_encode(['code' => 0, 'msg' => '请输入敏感词']); exit; }
@@ -306,10 +322,51 @@ if ($act == 'add_sensitive_word') {
 if ($act == 'del_sensitive_word') {
     apiIsLogin();
     apiIsAdmin();
+    ensureSensitiveWordsTable();
     $id = intval($_GET['id'] ?? 0);
     if ($id <= 0) { echo json_encode(['code' => 0, 'msg' => '参数错误']); exit; }
     tcp_query($conn, "DELETE FROM sensitive_words WHERE id=$id");
     echo json_encode(['code' => 1, 'msg' => '删除成功']);
+    exit;
+}
+
+// ---------- admin: 设置用户存储配额 ----------
+if ($act == 'set_user_storage') {
+    apiIsLogin();
+    apiIsAdmin();
+    $targetUid = intval($_POST['user_id'] ?? 0);
+    $storageMb = intval($_POST['storage_mb'] ?? 0);
+    if ($targetUid <= 0 || $storageMb <= 0) {
+        echo json_encode(['code' => 0, 'msg' => '参数错误']);
+        exit;
+    }
+    $storageBytes = $storageMb * 1024 * 1024;
+    tcp_query($conn, "UPDATE users SET storage=$storageBytes WHERE id=$targetUid");
+    echo json_encode(['code' => 1, 'msg' => '存储配额已更新']);
+    exit;
+}
+
+// ---------- admin: 设置全局最大单文件大小 ----------
+if ($act == 'set_max_file_size') {
+    apiIsLogin();
+    apiIsAdmin();
+    $sizeMb = intval($_POST['size_mb'] ?? 0);
+    if ($sizeMb <= 0) {
+        echo json_encode(['code' => 0, 'msg' => '参数错误']);
+        exit;
+    }
+    $sizeBytes = $sizeMb * 1024 * 1024;
+    setSetting('max_file_size', $sizeBytes);
+    echo json_encode(['code' => 1, 'msg' => '最大文件大小已更新为 ' . $sizeMb . 'MB']);
+    exit;
+}
+
+// ---------- admin: 获取全局最大单文件大小 ----------
+if ($act == 'get_max_file_size') {
+    apiIsLogin();
+    apiIsAdmin();
+    $size = getMaxFileSize();
+    echo json_encode(['code' => 1, 'size_bytes' => $size, 'size_mb' => round($size / 1024 / 1024, 1)]);
     exit;
 }
 

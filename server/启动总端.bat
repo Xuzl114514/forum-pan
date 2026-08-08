@@ -51,5 +51,8 @@ echo.
 echo 提示: 确保防火墙已放行端口 %BIND_PORT%
 echo.
 
+:: 确保文件存储目录存在
+if not exist "server_uploads" mkdir "server_uploads"
+
 "%PHP_PATH%" db_server.php 0.0.0.0 %BIND_PORT% %DB_HOST% %DB_USER% %DB_PWD% %DB_NAME%
 pause

@@ -11,7 +11,8 @@ if ($uid === 0) {
     exit;
 }
 
-$MAX_SIZE = 50 * 1024 * 1024; // 50MB per file
+$MAX_SIZE = getMaxFileSize(); // 从全局设置读取最大文件大小
+$isAdmin = isset($_SESSION['role']) && intval($_SESSION['role']) === 1;
 
 // ---------- list ----------
 if ($act == 'list') {
@@ -35,17 +36,19 @@ if ($act == 'upload') {
     $size = $file['size'];
     
     if ($size <= 0 || $size > $MAX_SIZE) {
-        echo json_encode(['code' => 0, 'msg' => '文件大小超出限制（最大50MB）']);
+        $maxMb = round($MAX_SIZE / 1024 / 1024, 1);
+        echo json_encode(['code' => 0, 'msg' => '文件大小超出限制（最大' . $maxMb . 'MB）']);
         exit;
     }
     
-    // 检查配额
-    $userRes = tcp_query($conn, "SELECT storage, used_storage FROM users WHERE id=$uid LIMIT 1");
-    $userRow = tcp_fetch_assoc($userRes);
-    $quota = intval($userRow['storage']);
-    $used = intval($userRow['used_storage']);
-    
-    if ($used + $size > $quota) {
+    // 检查配额（管理员不限）
+	    $userRes = tcp_query($conn, "SELECT storage, used_storage, role FROM users WHERE id=$uid LIMIT 1");
+	    $userRow = tcp_fetch_assoc($userRes);
+	    $quota = intval($userRow['storage']);
+	    $used = intval($userRow['used_storage']);
+	    $userRole = intval($userRow['role']);
+	    
+	    if ($userRole !== 1 && $used + $size > $quota) {
         echo json_encode(['code' => 0, 'msg' => '存储空间不足，请清理文件或联系管理员扩容']);
         exit;
     }
@@ -64,20 +67,38 @@ if ($act == 'upload') {
         exit;
     }
     
-    $relativePath = 'uploads/' . $storedName;
     $mimeType = $file['type'];
     
-    tcp_query($conn, "INSERT INTO files(user_id, file_name, file_path, file_size, file_type) VALUES($uid, '" . tcp_real_escape_string($conn, $origName) . "', '" . tcp_real_escape_string($conn, $relativePath) . "', $size, '" . tcp_real_escape_string($conn, $mimeType) . "')");
+    // 同步上传到服务端（通过 TCP 二进制传输）
+    $serverResult = tcp_store_file($conn, $destPath, $origName, $mimeType, $uid);
+    if ($serverResult && ($serverResult['code'] ?? 0) === 1) {
+        // 服务端存储成功，使用服务端路径
+        $relativePath = $serverResult['stored_path'];
+        $serverFileId = $serverResult['file_id'] ?? 0;
+        // 删除本地临时文件（服务端已存储）
+        @unlink($destPath);
+    } else {
+        // 服务端存储失败，使用本地路径作为兜底
+        $relativePath = 'uploads/' . $storedName;
+        $serverFileId = 0;
+    }
     
-    $newUsed = $used + $size;
-    tcp_query($conn, "UPDATE users SET used_storage=$newUsed WHERE id=$uid");
+    // 如果服务端已经创建了数据库记录（file_id > 0），服务端已处理存储更新
+    if ($serverFileId > 0) {
+        // 服务端已完成：文件存储 + DB插入 + used_storage更新，客户端无需额外操作
+    } else {
+        // 本地兜底：插入数据库记录
+        tcp_query($conn, "INSERT INTO files(user_id, file_name, file_path, file_size, file_type) VALUES($uid, '" . tcp_real_escape_string($conn, $origName) . "', '" . tcp_real_escape_string($conn, $relativePath) . "', $size, '" . tcp_real_escape_string($conn, $mimeType) . "')");
+        $newUsed = $used + $size;
+        tcp_query($conn, "UPDATE users SET used_storage=$newUsed WHERE id=$uid");
+        $serverFileId = tcp_insert_id($conn);
+    }
     
-    $fileId = tcp_insert_id($conn);
     echo json_encode([
         'code' => 1,
         'msg' => '上传成功',
         'file' => [
-            'id' => $fileId,
+            'id' => $serverFileId,
             'file_name' => $origName,
             'file_path' => $relativePath,
             'file_size' => $size,
@@ -103,13 +124,22 @@ if ($act == 'delete') {
     }
     
     $file = tcp_fetch_assoc($res);
-    $filePath = dirname(dirname(__DIR__)) . '/' . $file['file_path'];
+    $filePath = $file['file_path'];
+    $fileSize = intval($file['file_size']);
     
-    if (file_exists($filePath)) {
-        unlink($filePath);
+    // 判断是否为服务端存储的文件（路径以 server_uploads/ 开头）
+    if (strpos($filePath, 'server_uploads/') === 0) {
+        // 从服务端删除
+        $storedName = basename($filePath);
+        tcp_delete_server_file($conn, $storedName);
+    } else {
+        // 从本地删除
+        $localPath = dirname(dirname(__DIR__)) . '/' . $filePath;
+        if (file_exists($localPath)) {
+            unlink($localPath);
+        }
     }
     
-    $fileSize = intval($file['file_size']);
     tcp_query($conn, "DELETE FROM files WHERE id=$fid");
     tcp_query($conn, "UPDATE users SET used_storage = GREATEST(0, used_storage - $fileSize) WHERE id=$uid");
     
@@ -118,16 +148,17 @@ if ($act == 'delete') {
 }
 
 // ---------- stats ----------
-if ($act == 'stats') {
-    $userRes = tcp_query($conn, "SELECT storage, used_storage FROM users WHERE id=$uid LIMIT 1");
-    $userRow = tcp_fetch_assoc($userRes);
-    echo json_encode([
-        'code' => 1,
-        'storage' => intval($userRow['storage']),
-        'used' => intval($userRow['used_storage'])
-    ]);
-    exit;
-}
+	if ($act == 'stats') {
+	    $userRes = tcp_query($conn, "SELECT storage, used_storage, role FROM users WHERE id=$uid LIMIT 1");
+	    $userRow = tcp_fetch_assoc($userRes);
+	    echo json_encode([
+	        'code' => 1,
+	        'storage' => intval($userRow['storage']),
+	        'used' => intval($userRow['used_storage']),
+	        'is_admin' => (intval($userRow['role']) === 1)
+	    ]);
+	    exit;
+	}
 
 // ---------- share ----------
 if ($act == 'share') {

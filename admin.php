@@ -68,6 +68,13 @@ $theme = getTheme(); // 使用统一函数，适配无Cookie设备
             <hr style="border:none;border-top:1px solid var(--border-subtle);margin:24px 0">
 
             <h4 style="margin-bottom:16px;font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--text-primary);">👥 用户管理</h4>
+            
+            <div class="form-group" style="display:flex;gap:10px;margin-bottom:12px;align-items:center">
+                <span style="font-size:13px;color:var(--text-secondary);white-space:nowrap">全局最大单文件：</span>
+                <input type="number" id="maxFileSize" class="form-control" style="width:80px" min="1" max="10240" value="50">
+                <span style="font-size:13px;color:var(--text-muted)">MB</span>
+                <button onclick="setMaxFileSize()" class="btn btn-primary" style="padding:0 16px">保存</button>
+            </div>
             <?php $ures = tcp_query($conn,"SELECT * FROM users WHERE id!=1 ORDER BY id DESC");
             if(tcp_num_rows($ures) == 0){
             ?>
@@ -79,7 +86,7 @@ $theme = getTheme(); // 使用统一函数，适配无Cookie设备
                 $uAvatar = !empty($u['avatar']);
                 $uChar = mb_substr($uName, 0, 1, 'utf-8');
             ?>
-            <div style="padding:16px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:16px;">
+            <div style="padding:16px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:16px;flex-wrap:wrap">
                 <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:white;flex-shrink:0;overflow:hidden;">
                     <?php if ($uAvatar): ?>
                         <img src="<?=h($u['avatar'])?>" style="width:100%;height:100%;object-fit:cover;">
@@ -87,9 +94,16 @@ $theme = getTheme(); // 使用统一函数，适配无Cookie设备
                         <?=h($uChar)?>
                     <?php endif; ?>
                 </div>
-                <div style="flex:1">
+                <div style="flex:1;min-width:120px">
                     <div style="font-weight:600;color:var(--text-primary);"><?=h($uName)?></div>
                     <small style="color:var(--text-muted);font-size:12px;">用户名：<?=$u['username']?> | <?=$u['status']==1?'<span style="color:#22c55e">正常</span>':'<span style="color:#ef4444">禁用</span>'?></small>
+                    <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
+                        <span style="font-size:12px;color:var(--text-muted)">存储配额：</span>
+                        <input type="number" id="storage_<?=(int)$u['id']?>" class="form-control" style="width:70px;padding:4px 8px;font-size:12px" min="1" value="<?=intval($u['storage'] / 1024 / 1024)?>">
+                        <span style="font-size:12px;color:var(--text-muted)">MB</span>
+                        <span style="font-size:11px;color:var(--text-muted)">已用：<?=round($u['used_storage']/1024/1024,1)?>MB</span>
+                        <button onclick="setUserStorage(<?=(int)$u['id']?>)" class="btn btn-small btn-primary" style="padding:2px 10px;font-size:11px">设置</button>
+                    </div>
                 </div>
                 <button onclick="delUser(<?=(int)$u['id']?>, '<?=h($uName)?>')" class="btn btn-small btn-warning">删除</button>
             </div>
@@ -357,6 +371,42 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+/** 设置用户存储配额 */
+function setUserStorage(userId) {
+    var input = document.getElementById('storage_' + userId);
+    var storageMb = parseInt(input.value);
+    if (!storageMb || storageMb < 1) { Toast.warning('请输入有效的存储配额（MB）'); return; }
+    var formData = new FormData();
+    formData.append('user_id', userId);
+    formData.append('storage_mb', storageMb);
+    formSubmit('api/user.php?act=set_user_storage', formData, function(data) {
+        if (data.code == 1) { Toast.success(data.msg); }
+        else { Toast.error(data.msg); }
+    });
+}
+
+/** 设置全局最大单文件大小 */
+function setMaxFileSize() {
+    var sizeMb = parseInt(document.getElementById('maxFileSize').value);
+    if (!sizeMb || sizeMb < 1) { Toast.warning('请输入有效的大小（MB）'); return; }
+    var formData = new FormData();
+    formData.append('size_mb', sizeMb);
+    formSubmit('api/user.php?act=set_max_file_size', formData, function(data) {
+        if (data.code == 1) { Toast.success(data.msg); }
+        else { Toast.error(data.msg); }
+    });
+}
+
+/** 加载全局最大文件大小设置 */
+function loadMaxFileSize() {
+    requestJson('api/user.php?act=get_max_file_size', function(data) {
+        if (data.code == 1) {
+            document.getElementById('maxFileSize').value = data.size_mb;
+        }
+    });
+}
+loadMaxFileSize();
 </script>
 </body>
 </html>

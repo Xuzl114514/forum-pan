@@ -25,26 +25,52 @@ if (!$res || tcp_num_rows($res) == 0) {
 }
 
 $file = tcp_fetch_assoc($res);
-$filePath = dirname(dirname(__DIR__)) . '/' . $file['file_path'];
+$filePath = $file['file_path'];
 
-if (!file_exists($filePath)) {
-    http_response_code(404);
-    exit('File Not Found on Disk');
+// 判断是否为服务端存储的文件（路径以 server_uploads/ 开头）
+if (strpos($filePath, 'server_uploads/') === 0) {
+    // 从服务端获取文件
+    $storedName = basename($filePath);
+    $serverFile = tcp_get_file($conn, $storedName);
+    if ($serverFile && isset($serverFile['file_data'])) {
+        $fileData = $serverFile['file_data'];
+        $fileSize = $serverFile['file_size'];
+        $mimeType = $serverFile['mime_type'];
+    } else {
+        http_response_code(404);
+        exit('File Not Found on Server');
+    }
+} else {
+    // 从本地磁盘获取文件（兜底）
+    $localPath = dirname(dirname(__DIR__)) . '/' . $filePath;
+    if (!file_exists($localPath)) {
+        http_response_code(404);
+        exit('File Not Found on Disk');
+    }
+    $fileData = null; // 使用 readfile 流式输出
+    $fileSize = $file['file_size'];
+    $mimeType = $file['file_type'];
 }
 
-$mimeType = $file['file_type'];
 if (empty($mimeType)) {
     $mimeType = 'application/octet-stream';
 }
 
 $download = isset($_GET['download']) && $_GET['download'] == '1';
-$fileSize = $file['file_size'];
 
 header('Content-Type: ' . $mimeType);
 header('Content-Disposition: ' . ($download ? 'attachment' : 'inline') . '; filename="' . rawurlencode($file['file_name']) . '"');
 header('Cache-Control: private, max-age=0');
 header('Accept-Ranges: bytes');
 
+// 服务端文件：直接输出二进制数据
+if (isset($fileData) && $fileData !== null) {
+    header('Content-Length: ' . strlen($fileData));
+    echo $fileData;
+    exit;
+}
+
+// 本地文件：使用 readfile 流式输出
 if (isset($_SERVER['HTTP_RANGE']) && !$download) {
     $range = $_SERVER['HTTP_RANGE'];
     if (preg_match('/bytes=(\d*)-(\d*)/', $range, $matches)) {
@@ -60,7 +86,7 @@ if (isset($_SERVER['HTTP_RANGE']) && !$download) {
         header('HTTP/1.1 206 Partial Content');
         header('Content-Length: ' . $length);
         header('Content-Range: bytes ' . $start . '-' . $end . '/' . $fileSize);
-        $handle = fopen($filePath, 'rb');
+        $handle = fopen($localPath, 'rb');
         if ($handle) {
             fseek($handle, $start);
             $buffer = 8192;
@@ -80,4 +106,4 @@ if (isset($_SERVER['HTTP_RANGE']) && !$download) {
 }
 
 header('Content-Length: ' . $fileSize);
-readfile($filePath);
+readfile($localPath);

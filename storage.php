@@ -16,7 +16,7 @@ renderPageStart('我的网盘', 'storage');
 <div class="storage-toolbar card animate-in animate-delay-1">
     <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📤 上传文件</button>
     <input type="file" id="fileInput" style="display:none" onchange="handleUpload(this.files[0])">
-    <span class="storage-hint">单个文件最大 50MB</span>
+    <span class="storage-hint">单个文件最大 <span id="maxFileSizeHint">50MB</span></span>
 </div>
 
 <div id="fileList" class="storage-grid animate-in animate-delay-2">
@@ -38,20 +38,40 @@ renderPageStart('我的网盘', 'storage');
 <script>
 var fileListData = [];
 
+var maxFileSizeBytes = 52428800; // 默认 50MB，由 loadMaxSize 更新
+
 document.addEventListener('DOMContentLoaded', function() {
     loadStorage();
     loadFiles();
+    loadMaxSize();
 });
+
+/** 加载全局最大文件大小 */
+function loadMaxSize() {
+    requestJson('api/user.php?act=get_max_file_size', function(data) {
+        if (data.code == 1) {
+            maxFileSizeBytes = data.size_bytes;
+            var sizeMb = data.size_mb;
+            document.getElementById('maxFileSizeHint').textContent = sizeMb >= 1024 ? (sizeMb/1024).toFixed(1) + 'GB' : sizeMb + 'MB';
+        }
+    });
+}
 
 function loadStorage() {
     requestJson('api/storage.php?act=stats', function(data) {
         if (data.code == 1) {
             var used = data.used;
             var total = data.storage;
+            var isAdmin = data.is_admin;
             var percent = total > 0 ? Math.min(100, (used / total) * 100) : 0;
             
-            document.getElementById('storageNumbers').textContent = formatSize(used) + ' / ' + formatSize(total);
-            document.getElementById('storageBar').style.width = percent + '%';
+            if (isAdmin) {
+                document.getElementById('storageNumbers').textContent = formatSize(used) + ' / 无限';
+                document.getElementById('storageBar').style.width = '0%';
+            } else {
+                document.getElementById('storageNumbers').textContent = formatSize(used) + ' / ' + formatSize(total);
+                document.getElementById('storageBar').style.width = percent + '%';
+            }
             
             if (percent > 90) {
                 document.getElementById('storageBar').className = 'storage-bar-fill danger';
@@ -286,8 +306,8 @@ function deleteFile(fileId, fileName) {
 function handleUpload(file) {
     if (!file) return;
     
-    if (file.size > 50 * 1024 * 1024) {
-        Toast.error('文件大小超出限制（最大50MB）');
+    if (file.size > maxFileSizeBytes) {
+        Toast.error('文件大小超出限制（最大' + (maxFileSizeBytes >= 1073741824 ? (maxFileSizeBytes/1073741824).toFixed(1) + 'GB' : (maxFileSizeBytes/1048576).toFixed(0) + 'MB') + '）');
         return;
     }
     

@@ -97,6 +97,189 @@ class TcpConnection {
     public function close() {
         if ($this->socket) { @fclose($this->socket); $this->socket = null; }
     }
+
+    // ============================================================
+    // 文件传输方法（二进制协议）
+    // ============================================================
+
+    /** 发送原始数据（JSON + 二进制），不经过 _send */
+    public function send_raw($data) {
+        return @fwrite($this->socket, $data);
+    }
+
+    /** 接收精确指定字节数的数据（阻塞直到读完） */
+    public function recv_raw($length) {
+        $data = '';
+        $remaining = $length;
+        // 先消耗 buffer 中已有的数据
+        if (strlen($this->_buffer) > 0) {
+            $fromBuffer = substr($this->_buffer, 0, $remaining);
+            $data .= $fromBuffer;
+            $remaining -= strlen($fromBuffer);
+            $this->_buffer = substr($this->_buffer, strlen($fromBuffer));
+        }
+        // 从 socket 读取剩余数据
+        while ($remaining > 0) {
+            $chunk = @fread($this->socket, min(65536, $remaining));
+            if ($chunk === false || $chunk === '') {
+                if (feof($this->socket)) {
+                    $this->error = '连接在文件传输中断开';
+                    return false;
+                }
+                usleep(10000); // 10ms 等待
+                continue;
+            }
+            $data .= $chunk;
+            $remaining -= strlen($chunk);
+        }
+        return $data;
+    }
+
+    /** 接收一行 JSON 数据（直到换行符） */
+    public function recv_line() {
+        $line = '';
+        while (($pos = strpos($this->_buffer, "\n")) === false) {
+            $chunk = @fread($this->socket, 4096);
+            if ($chunk === false || $chunk === '') {
+                if (feof($this->socket)) {
+                    $this->error = '连接已断开';
+                    return null;
+                }
+                usleep(10000);
+                continue;
+            }
+            $this->_buffer .= $chunk;
+        }
+        $line = substr($this->_buffer, 0, $pos);
+        $this->_buffer = substr($this->_buffer, $pos + 1);
+        return json_decode(trim($line), true);
+    }
+
+    /**
+     * 存储文件到服务端
+     * @param string $localFilePath 本地文件路径
+     * @param string $fileName 原始文件名
+     * @param string $mimeType MIME类型
+     * @param int $userId 用户ID
+     * @return array|null 服务端响应 ['code'=>1, 'stored_path'=>..., 'file_id'=>...] 或 null
+     */
+    public function store_server_file($localFilePath, $fileName, $mimeType, $userId) {
+        if (!file_exists($localFilePath)) {
+            $this->error = '本地文件不存在: ' . $localFilePath;
+            return null;
+        }
+        
+        $fileSize = filesize($localFilePath);
+        if ($fileSize <= 0) {
+            $this->error = '文件大小为0';
+            return null;
+        }
+        
+        // 发送 JSON 头
+        $header = json_encode([
+            'action' => 'store_file',
+            'file_name' => $fileName,
+            'file_size' => $fileSize,
+            'mime_type' => $mimeType,
+            'user_id' => $userId,
+        ], JSON_UNESCAPED_UNICODE) . "\n";
+        
+        if (!$this->send_raw($header)) {
+            $this->error = '发送文件头失败';
+            return null;
+        }
+        
+        // 发送二进制文件数据（分块发送，避免内存问题）
+        $handle = fopen($localFilePath, 'rb');
+        if (!$handle) {
+            $this->error = '无法打开本地文件';
+            // 发送空数据以完成协议
+            $this->send_raw('');
+            return null;
+        }
+        
+        $totalSent = 0;
+        while (!feof($handle)) {
+            $chunk = fread($handle, 65536); // 64KB 块
+            if ($chunk === false) break;
+            $sent = $this->send_raw($chunk);
+            if ($sent === false || $sent === 0) {
+                fclose($handle);
+                $this->error = '发送文件数据失败';
+                return null;
+            }
+            $totalSent += $sent;
+        }
+        fclose($handle);
+        
+        // 读取服务端响应
+        $response = $this->recv_line();
+        return $response;
+    }
+
+    /**
+     * 从服务端获取文件
+     * @param string $storedName 服务端存储的文件名
+     * @return array|null ['file_data'=>string, 'file_name'=>string, 'file_size'=>int, 'mime_type'=>string] 或 null
+     */
+    public function get_server_file($storedName) {
+        // 发送请求
+        $request = json_encode([
+            'action' => 'get_file',
+            'file_name' => $storedName,
+        ], JSON_UNESCAPED_UNICODE) . "\n";
+        
+        if (!$this->send_raw($request)) {
+            $this->error = '发送文件请求失败';
+            return null;
+        }
+        
+        // 读取 JSON 响应头
+        $header = $this->recv_line();
+        if ($header === null) {
+            $this->error = '读取文件响应头失败';
+            return null;
+        }
+        
+        if (($header['code'] ?? 0) !== 1) {
+            $this->error = $header['error'] ?? '文件不存在';
+            return null;
+        }
+        
+        // 读取二进制文件数据
+        $fileSize = intval($header['file_size'] ?? 0);
+        $fileData = $this->recv_raw($fileSize);
+        
+        if ($fileData === false) {
+            return null;
+        }
+        
+        return [
+            'file_data' => $fileData,
+            'file_name' => $header['file_name'] ?? $storedName,
+            'file_size' => $fileSize,
+            'mime_type' => $header['mime_type'] ?? 'application/octet-stream',
+        ];
+    }
+
+    /**
+     * 删除服务端文件
+     * @param string $storedName 服务端存储的文件名
+     * @return array|null 响应
+     */
+    public function delete_server_file($storedName) {
+        $request = json_encode([
+            'action' => 'delete_server_file',
+            'file_name' => $storedName,
+        ], JSON_UNESCAPED_UNICODE) . "\n";
+        
+        if (!$this->send_raw($request)) {
+            $this->error = '发送删除请求失败';
+            return null;
+        }
+        
+        return $this->recv_line();
+    }
 }
 
 // ============================================================
@@ -173,3 +356,36 @@ function tcp_multi_query($conn, $sql) {
 }
 function tcp_free_result($result) { $result->free(); }
 function tcp_close($conn) { $conn->close(); }
+
+/**
+ * 存储文件到服务端（通过 TCP 二进制传输）
+ * @param TcpConnection $conn TCP 连接
+ * @param string $localFilePath 本地文件路径
+ * @param string $fileName 原始文件名
+ * @param string $mimeType MIME类型
+ * @param int $userId 用户ID
+ * @return array|null 服务端响应
+ */
+function tcp_store_file($conn, $localFilePath, $fileName, $mimeType, $userId) {
+    return $conn->store_server_file($localFilePath, $fileName, $mimeType, $userId);
+}
+
+/**
+ * 从服务端获取文件（通过 TCP 二进制传输）
+ * @param TcpConnection $conn TCP 连接
+ * @param string $storedName 服务端存储的文件名
+ * @return array|null 文件数据
+ */
+function tcp_get_file($conn, $storedName) {
+    return $conn->get_server_file($storedName);
+}
+
+/**
+ * 删除服务端文件
+ * @param TcpConnection $conn TCP 连接
+ * @param string $storedName 服务端存储的文件名
+ * @return array|null 响应
+ */
+function tcp_delete_server_file($conn, $storedName) {
+    return $conn->delete_server_file($storedName);
+}
